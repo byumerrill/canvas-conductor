@@ -1,0 +1,140 @@
+"""Discussion topic commands: list, create, update, delete."""
+from __future__ import annotations
+
+import typer
+
+from ..client import get_client
+from ..config import get_course_id
+from ..utils.output import format_output
+from ._common import confirm_or_abort, emit, handle_canvas_error
+
+app = typer.Typer(name="discussions", help="Manage discussion topics")
+
+
+DISCUSSION_COLUMNS = [
+    ("ID", "id"),
+    ("Title", "title"),
+    ("Published", "published"),
+    ("Pinned", "pinned"),
+    ("Type", "discussion_type"),
+    ("Posted", "posted_at"),
+]
+
+
+@app.command("list")
+def list_discussions(
+    course: str = typer.Option(None, "-c", "--course"),
+    search: str = typer.Option(None, "--search"),
+    scope: str = typer.Option(None, "--scope", help="locked, unlocked, pinned, unpinned"),
+    output: str = typer.Option("table", "-o", "--output"),
+    verbose: bool = typer.Option(False, "-v", "--verbose"),
+):
+    """List discussion topics."""
+    try:
+        client = get_client(verbose=verbose)
+        cid = get_course_id(course)
+        params: dict = {}
+        if search:
+            params["search_term"] = search
+        if scope:
+            params["scope"] = scope
+        items = client.get_all(f"/courses/{cid}/discussion_topics", params=params)
+        emit(format_output(items, DISCUSSION_COLUMNS, output))
+    except Exception as exc:
+        raise handle_canvas_error(exc)
+
+
+@app.command("create")
+def create_discussion(
+    title: str = typer.Option(..., "--title"),
+    course: str = typer.Option(None, "-c", "--course"),
+    message: str = typer.Option(None, "--message"),
+    discussion_type: str = typer.Option(
+        None, "--type", help="side_comment, threaded"
+    ),
+    published: bool = typer.Option(False, "--published"),
+    pinned: bool = typer.Option(False, "--pinned"),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+    verbose: bool = typer.Option(False, "-v", "--verbose"),
+):
+    """Create a discussion topic."""
+    try:
+        cid = get_course_id(course)
+        payload = {
+            "title": title,
+            "message": message,
+            "discussion_type": discussion_type,
+            "published": published,
+            "pinned": pinned,
+        }
+        payload = {k: v for k, v in payload.items() if v is not None}
+        if dry_run:
+            emit(f"DRY-RUN: POST /courses/{cid}/discussion_topics payload={payload}")
+            return
+        client = get_client(verbose=verbose)
+        result = client.post(f"/courses/{cid}/discussion_topics", data=payload)
+        emit(format_output(result, DISCUSSION_COLUMNS, "table"))
+    except Exception as exc:
+        raise handle_canvas_error(exc)
+
+
+@app.command("update")
+def update_discussion(
+    discussion_id: int = typer.Option(..., "--id"),
+    course: str = typer.Option(None, "-c", "--course"),
+    title: str = typer.Option(None, "--title"),
+    message: str = typer.Option(None, "--message"),
+    published: bool = typer.Option(None, "--published"),
+    pinned: bool = typer.Option(None, "--pinned"),
+    dry_run: bool = typer.Option(False, "--dry-run"),
+    verbose: bool = typer.Option(False, "-v", "--verbose"),
+):
+    """Update a discussion topic."""
+    try:
+        cid = get_course_id(course)
+        payload = {
+            "title": title,
+            "message": message,
+            "published": published,
+            "pinned": pinned,
+        }
+        payload = {k: v for k, v in payload.items() if v is not None}
+        if not payload:
+            emit("No fields supplied — nothing to update.")
+            return
+        if dry_run:
+            emit(
+                f"DRY-RUN: PUT /courses/{cid}/discussion_topics/{discussion_id} "
+                f"payload={payload}"
+            )
+            return
+        client = get_client(verbose=verbose)
+        result = client.put(
+            f"/courses/{cid}/discussion_topics/{discussion_id}", payload
+        )
+        emit(format_output(result, DISCUSSION_COLUMNS, "table"))
+    except Exception as exc:
+        raise handle_canvas_error(exc)
+
+
+@app.command("delete")
+def delete_discussion(
+    discussion_id: int = typer.Option(..., "--id"),
+    course: str = typer.Option(None, "-c", "--course"),
+    dry_run: bool = typer.Option(True, "--dry-run/--commit"),
+    yes: bool = typer.Option(False, "-y", "--yes"),
+    verbose: bool = typer.Option(False, "-v", "--verbose"),
+):
+    """Delete a discussion topic."""
+    try:
+        cid = get_course_id(course)
+        confirm_or_abort(
+            f"Delete discussion {discussion_id}?", yes=yes, dry_run=dry_run
+        )
+        client = get_client(verbose=verbose)
+        client.delete(f"/courses/{cid}/discussion_topics/{discussion_id}")
+        emit(f"Deleted discussion {discussion_id}.")
+    except typer.Exit:
+        raise
+    except Exception as exc:
+        raise handle_canvas_error(exc)

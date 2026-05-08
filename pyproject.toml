@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "canvas-conductor"
+version = "0.1.0"
+description = "CLI tool for managing Canvas LMS courses"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [
+    {name = "Dave Wilson", email = "davidwilsonphd@gmail.com"}
+]
+dependencies = [
+    "typer>=0.9.0",
+    "requests>=2.31.0",
+    "pydantic>=2.0",
+    "python-dotenv>=1.0.0",
+    "rich>=13.0.0",
+    "tomli>=2.0.0; python_version < '3.11'",
+    # Used by the playbook extension (markdown rendering + HTML post-processing).
+    "markdown>=3.5",
+    "beautifulsoup4>=4.12.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-mock",
+    "responses>=0.23.0",
+]
+
+[project.scripts]
+conductor = "canvas_conductor.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["canvas_conductor*"]

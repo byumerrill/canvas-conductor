@@ -1,0 +1,16 @@
+# Treat extensions as private by default.
+#
+# This directory is auto-discovered by the CLI at runtime, so any *.py
+# file dropped in here becomes a subcommand group regardless of whether
+# git tracks it. Most extensions an instructor writes will be course- or
+# content-specific and shouldn't ship with the public repository, so the
+# pattern below ignores everything except the files we want to track as
+# worked examples.
+#
+# To promote a new extension to "tracked example", add another
+# `!filename.py` exception below.
+
+*.py
+!__init__.py
+!_example.py
+!playbook.py

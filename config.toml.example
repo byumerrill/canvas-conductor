@@ -1,0 +1,63 @@
+# Canvas Conductor Configuration — example template.
+#
+# To use: `cp config.toml.example config.toml`, then edit your local
+# copy. The live `config.toml` is gitignored so your course ids and any
+# instructor-specific paths stay out of the public repository.
+#
+# Safe to commit: this template file (no secrets).
+# Never commit: your live `config.toml` (course ids are not secret but
+# are user-specific) or your `.env` (which holds your Canvas token).
+
+[defaults]
+# Default output format for all commands: table, json, or csv.
+output_format = "table"
+
+# Number of results per API page (max 100, recommended 100).
+per_page = 100
+
+# Require confirmation before destructive operations (delete, overwrite).
+# Set to false if you prefer --yes flag workflows.
+confirm_destructive = true
+
+
+# Course Definitions
+# ------------------
+# Each [courses.<key>] block defines a course you manage.
+# The <key> is a short alias used with the --course / -c flag.
+#
+# Examples:
+#   conductor modules list --course mycourse
+#   conductor pages show welcome --course cs101
+#
+# If only one course is defined, it is used automatically (no -c needed).
+
+[courses.mycourse]
+# Canvas course ID — find it in the course URL: /courses/12345
+id = 12345
+# Human-readable name (for display in listings).
+name = "Course Display Name"
+# Term label (for your own reference; not sent to Canvas).
+term = "Fall 2026"
+
+# Add additional [courses.<key>] blocks for each course you manage:
+#
+# [courses.cs101]
+# id = 67890
+# name = "CS 101: Intro to Computer Science"
+# term = "Fall 2026"
+
+
+# Playbook extension paths (only needed if you use the bundled
+# `playbook` extension at canvas_conductor/extensions/playbook.py).
+# Paths are resolved relative to this config.toml when not absolute.
+# Delete this whole section if you don't use the playbook extension.
+[playbook]
+# Per-week markdown source files. Anchors within the markdown drive
+# media placement; see canvas-integration/README.md for the full mapping.
+content_dir = "../content"
+# Local cache where `nlm` downloads land before being uploaded to Canvas.
+local_media_cache = "/tmp/playbook-media"
+# Registry of NotebookLM-produced assets (notebook_id, artifact_id, type).
+media_urls_file = "../canvas-integration/media-urls.toml"
+# Folder name inside the Canvas course where assets are uploaded.
+canvas_media_folder = "playbook-media"

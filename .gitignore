@@ -1,0 +1,18 @@
+__pycache__/
+*.pyc
+.env
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.venv/
+.DS_Store
+uv.lock
+
+# Live course configuration (course ids + extension paths are
+# user-specific). Track `config.toml.example` instead — copy it to
+# `config.toml` locally and edit.
+config.toml
+
+# Local spec/handoff materials and live-test config (never committed).
+spec/
