@@ -36,7 +36,8 @@ def test_pages_create_dry_run(write_config, mock_responses):
     )
     assert result.exit_code == 0, result.output
     assert "DRY-RUN" in result.output
-    assert "wiki_page[title]" in result.output
+    assert "'wiki_page'" in result.output
+    assert "'title': 'X'" in result.output
 
 
 def test_pages_set_front(write_config, mock_responses, api):

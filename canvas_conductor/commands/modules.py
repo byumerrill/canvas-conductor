@@ -171,11 +171,11 @@ def reorder_modules(
         ordered = [int(x) for x in ids.split(",") if x.strip()]
         if dry_run:
             for pos, mid in enumerate(ordered, start=1):
-                emit(f"DRY-RUN: PUT /courses/{cid}/modules/{mid} module[position]={pos}")
+                emit(f"DRY-RUN: PUT /courses/{cid}/modules/{mid} module.position={pos}")
             return
         client = get_client(verbose=verbose)
         for pos, mid in enumerate(ordered, start=1):
-            client.put(f"/courses/{cid}/modules/{mid}", {"module[position]": pos})
+            client.put(f"/courses/{cid}/modules/{mid}", {"module": {"position": pos}})
         emit(f"Reordered {len(ordered)} modules.")
     except Exception as exc:
         raise handle_canvas_error(exc)
@@ -195,7 +195,7 @@ def publish_module(
             emit(f"DRY-RUN: would publish module {module_id}")
             return
         client = get_client(verbose=verbose)
-        client.put(f"/courses/{cid}/modules/{module_id}", {"module[published]": True})
+        client.put(f"/courses/{cid}/modules/{module_id}", {"module": {"published": True}})
         emit(f"Published module {module_id}.")
     except Exception as exc:
         raise handle_canvas_error(exc)
@@ -215,7 +215,7 @@ def unpublish_module(
             emit(f"DRY-RUN: would unpublish module {module_id}")
             return
         client = get_client(verbose=verbose)
-        client.put(f"/courses/{cid}/modules/{module_id}", {"module[published]": False})
+        client.put(f"/courses/{cid}/modules/{module_id}", {"module": {"published": False}})
         emit(f"Unpublished module {module_id}.")
     except Exception as exc:
         raise handle_canvas_error(exc)

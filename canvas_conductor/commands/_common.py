@@ -106,13 +106,22 @@ def parse_kv_list(value: str | None) -> dict[str, str]:
 
 
 def prefix_keys(prefix: str, payload: dict[str, Any]) -> dict[str, Any]:
-    """Wrap each key in `prefix[key]` form (Canvas's standard request format)."""
-    result: dict[str, Any] = {}
-    for k, v in payload.items():
-        if v is None:
-            continue
-        if isinstance(v, list):
-            result[f"{prefix}[{k}][]"] = v
-        else:
-            result[f"{prefix}[{k}]"] = v
-    return result
+    """Wrap a payload under a single top-level resource key for Canvas.
+
+    Drops None values, returns an empty dict if everything was None (so
+    callers can short-circuit with `if not payload`).
+
+    >>> prefix_keys("wiki_page", {"title": "Hi", "published": None})
+    {'wiki_page': {'title': 'Hi'}}
+
+    Canvas's POST/PUT endpoints want the resource nested under its type
+    key (`{"wiki_page": {"title": ...}}`). The older `prefix[key]`
+    bracket-style is a form-encoded convention; when sent as JSON,
+    several endpoints (notably POST /modules, /pages, /assignments)
+    reject it with 400. Sticking to nested form keeps every endpoint
+    happy.
+    """
+    inner = {k: v for k, v in payload.items() if v is not None}
+    if not inner:
+        return {}
+    return {prefix: inner}

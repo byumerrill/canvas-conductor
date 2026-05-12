@@ -58,9 +58,9 @@ def grade_submission(
     """Grade a single submission."""
     try:
         cid = get_course_id(course)
-        payload: dict = {"submission[posted_grade]": grade}
+        payload: dict = {"submission": {"posted_grade": grade}}
         if comment:
-            payload["comment[text_comment]"] = comment
+            payload["comment"] = {"text_comment": comment}
         path = f"/courses/{cid}/assignments/{assignment_id}/submissions/{user_id}"
         if dry_run:
             emit(f"DRY-RUN: PUT {path} payload={payload}")
@@ -93,7 +93,8 @@ def bulk_grade(
             emit(f"ERROR: file not found: {file}")
             raise typer.Exit(code=2)
 
-        grade_data: dict = {}
+        # Nested form: {"grade_data": {<user_id>: {"posted_grade": ..., "text_comment": ...}}}
+        per_student: dict[str, dict] = {}
         with path_obj.open() as fh:
             reader = csv.DictReader(fh)
             for row in reader:
@@ -101,24 +102,26 @@ def bulk_grade(
                 grade = row.get("grade") or row.get("posted_grade")
                 if not uid or grade is None:
                     continue
-                grade_data[f"grade_data[{uid}][posted_grade]"] = grade
+                entry: dict = {"posted_grade": grade}
                 comment = row.get("comment") or row.get("text_comment")
                 if comment:
-                    grade_data[f"grade_data[{uid}][text_comment]"] = comment
+                    entry["text_comment"] = comment
+                per_student[str(uid)] = entry
 
-        if not grade_data:
+        if not per_student:
             emit("No grades parsed from CSV (expected columns: user_id, grade).")
             raise typer.Exit(code=2)
 
-        n_students = sum(1 for k in grade_data if k.endswith("[posted_grade]"))
+        n_students = len(per_student)
+        grade_data = {"grade_data": per_student}
         url = f"/courses/{cid}/assignments/{assignment_id}/submissions/update_grades"
 
         if dry_run:
             emit(f"DRY-RUN: would post {n_students} grades to {url}")
-            for k, v in list(grade_data.items())[:10]:
-                emit(f"  {k} = {v}")
-            if len(grade_data) > 10:
-                emit(f"  ... and {len(grade_data) - 10} more rows")
+            for uid, entry in list(per_student.items())[:10]:
+                emit(f"  {uid}: {entry}")
+            if n_students > 10:
+                emit(f"  ... and {n_students - 10} more rows")
             return
 
         if not yes and not typer.confirm(

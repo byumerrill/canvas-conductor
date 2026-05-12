@@ -77,6 +77,6 @@ def test_modules_reorder_dry_run(write_config, mock_responses):
         app, ["modules", "reorder", "--ids", "3,1,2", "--dry-run"]
     )
     assert result.exit_code == 0, result.output
-    assert "module[position]=1" in result.output
-    assert "module[position]=2" in result.output
-    assert "module[position]=3" in result.output
+    assert "module.position=1" in result.output
+    assert "module.position=2" in result.output
+    assert "module.position=3" in result.output

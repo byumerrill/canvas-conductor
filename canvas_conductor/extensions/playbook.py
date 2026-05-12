@@ -60,7 +60,11 @@ from typing import Any
 import typer
 
 from canvas_conductor.client import get_client
-from canvas_conductor.commands._common import emit, handle_canvas_error
+from canvas_conductor.commands._common import (
+    confirm_or_abort,
+    emit,
+    handle_canvas_error,
+)
 from canvas_conductor.config import find_config_file, get_config, get_course_id
 
 if sys.version_info >= (3, 11):
@@ -670,7 +674,7 @@ def deploy(
         # 1. Set default view to modules
         emit("Ensuring course default_view is 'modules'...")
         if client:
-            client.put(f"/courses/{cid}", {"course[default_view]": "modules"})
+            client.put(f"/courses/{cid}", {"course": {"default_view": "modules"}})
 
         # 2. Assignment group
         emit("\nEnsuring assignment group 'IS Career Playbook' (5%)...")
@@ -705,7 +709,7 @@ def deploy(
                 else:
                     mod = client.post(
                         f"/courses/{cid}/modules",
-                        data={"module[name]": module_name, "module[position]": position},
+                        data={"module": {"name": module_name, "position": position}},
                     )
                     module_id = mod["id"]
                     emit(f"  module: created id={module_id}")
@@ -730,17 +734,17 @@ def deploy(
                         page_url = page["url"]
                         client.put(
                             f"/courses/{cid}/pages/{page_url}",
-                            {"wiki_page[body]": html_body},
+                            {"wiki_page": {"body": html_body}},
                         )
                         emit(f"    reuse url='{page_url}', body updated")
                     else:
                         page = client.post(
                             f"/courses/{cid}/pages",
-                            data={
-                                "wiki_page[title]": module_name,
-                                "wiki_page[body]": html_body,
-                                "wiki_page[published]": False,
-                            },
+                            data={"wiki_page": {
+                                "title": module_name,
+                                "body": html_body,
+                                "published": False,
+                            }},
                         )
                         page_url = page.get("url")
                         emit(f"    created url='{page_url}'")
@@ -760,21 +764,24 @@ def deploy(
                     assignment_id = asgn["id"]
                     emit(f"  assignment: reuse id={assignment_id} ({asgn_meta['name']})")
                 else:
-                    payload: dict[str, Any] = {
-                        "assignment[name]": asgn_meta["name"],
-                        "assignment[points_possible]": 10,
-                        "assignment[grading_type]": "pass_fail",
-                        "assignment[published]": False,
-                        "assignment[description]":
+                    asgn_payload: dict[str, Any] = {
+                        "name": asgn_meta["name"],
+                        "points_possible": 10,
+                        "grading_type": "pass_fail",
+                        "published": False,
+                        "description":
                             f"<p>See the {module_name} page for full instructions.</p>",
-                        "assignment[submission_types][]":
+                        "submission_types":
                             asgn_meta.get("submission_types", ["online_text_entry"]),
                     }
                     if "allowed_extensions" in asgn_meta:
-                        payload["assignment[allowed_extensions][]"] = asgn_meta["allowed_extensions"]
+                        asgn_payload["allowed_extensions"] = asgn_meta["allowed_extensions"]
                     if ag_id:
-                        payload["assignment[assignment_group_id]"] = ag_id
-                    asgn = client.post(f"/courses/{cid}/assignments", data=payload)
+                        asgn_payload["assignment_group_id"] = ag_id
+                    asgn = client.post(
+                        f"/courses/{cid}/assignments",
+                        data={"assignment": asgn_payload},
+                    )
                     assignment_id = asgn["id"]
                     emit(f"  assignment: created id={assignment_id} ({asgn_meta['name']})")
             elif asgn_meta:
@@ -788,31 +795,30 @@ def deploy(
                 if page_url and f"{module_name} Content" not in titles_present:
                     client.post(
                         f"/courses/{cid}/modules/{module_id}/items",
-                        data={
-                            "module_item[title]": f"{module_name} Content",
-                            "module_item[type]": "Page",
-                            "module_item[page_url]": page_url,
-                        },
+                        data={"module_item": {
+                            "title": f"{module_name} Content",
+                            "type": "Page",
+                            "page_url": page_url,
+                        }},
                     )
                 if "Media" not in titles_present:
                     client.post(
                         f"/courses/{cid}/modules/{module_id}/items",
-                        data={"module_item[title]": "Media", "module_item[type]": "SubHeader"},
+                        data={"module_item": {"title": "Media", "type": "SubHeader"}},
                     )
                 if "Deliverable" not in titles_present:
                     client.post(
                         f"/courses/{cid}/modules/{module_id}/items",
-                        data={"module_item[title]": "Deliverable",
-                              "module_item[type]": "SubHeader"},
+                        data={"module_item": {"title": "Deliverable", "type": "SubHeader"}},
                     )
                 if assignment_id and asgn_meta["name"] not in titles_present:
                     client.post(
                         f"/courses/{cid}/modules/{module_id}/items",
-                        data={
-                            "module_item[title]": asgn_meta["name"],
-                            "module_item[type]": "Assignment",
-                            "module_item[content_id]": assignment_id,
-                        },
+                        data={"module_item": {
+                            "title": asgn_meta["name"],
+                            "type": "Assignment",
+                            "content_id": assignment_id,
+                        }},
                     )
 
         emit("\nDeploy complete.")
@@ -862,8 +868,174 @@ def sync_pages(
             tag = "[DRY-RUN] " if dry_run else ""
             emit(f"  {tag}{module_name}: {len(html_body)} chars -> {slug}")
             if not dry_run:
-                client.put(f"/courses/{cid}/pages/{slug}", {"wiki_page[body]": html_body})
+                client.put(f"/courses/{cid}/pages/{slug}", {"wiki_page": {"body": html_body}})
 
         emit("\nDone.")
+    except Exception as exc:
+        raise handle_canvas_error(exc)
+
+
+@app.command("reset")
+def reset(
+    course: str = typer.Option(None, "-c", "--course"),
+    dry_run: bool = typer.Option(
+        True, "--dry-run/--commit",
+        help="Default: dry-run. Pass --commit to actually delete.",
+    ),
+    yes: bool = typer.Option(False, "-y", "--yes",
+                             help="Skip the final confirmation prompt."),
+    verbose: bool = typer.Option(False, "-v", "--verbose"),
+) -> None:
+    """Delete everything `playbook deploy` would have created in a course.
+
+    Resources targeted (all matched by name, same as `deploy`'s idempotency
+    check, so nothing outside the playbook scope is touched):
+
+      - The 5 weekly modules (deletes module items too, but not the linked
+        page/assignment objects — those are removed separately below)
+      - The 5 weekly pages
+      - The 5 weekly assignments
+      - The "IS Career Playbook" assignment group
+      - All files in the playbook-media folder (folder itself is left in
+        place; `upload-media` will reuse it next time)
+
+    Default is dry-run. Pass --commit to actually delete. The cache at
+    `/tmp/playbook-media` is untouched — clear it manually if you want a
+    truly clean slate before the next `fetch-media`.
+    """
+    try:
+        cid = get_course_id(course)
+        paths = _playbook_paths()
+        client = get_client(verbose=verbose)
+
+        # Discovery: anchor on the most stable signals (assignment group
+        # name + assignment names + folder name) rather than module/page
+        # names, which can drift when content is renamed in source.
+        assignment_names = {meta["name"] for meta in ASSIGNMENTS.values()}
+        ag_name = "IS Career Playbook"
+
+        # Assignment group (stable name)
+        ag_groups = client.get_all(f"/courses/{cid}/assignment_groups")
+        target_ags = [g for g in ag_groups if g.get("name") == ag_name]
+        ag_ids = {g["id"] for g in target_ags}
+
+        # Assignments: in the playbook group OR matching the known names
+        assignments = client.get_all(f"/courses/{cid}/assignments")
+        target_assignments = [
+            a for a in assignments
+            if a.get("assignment_group_id") in ag_ids
+            or a.get("name") in assignment_names
+        ]
+        target_assignment_ids = {a["id"] for a in target_assignments}
+
+        # Modules: any module that contains a playbook-managed assignment
+        # as an item. Walk items to find associated pages too.
+        all_modules = client.get_all(f"/courses/{cid}/modules")
+        target_modules: list[dict] = []
+        target_page_urls: set[str] = set()
+        for m in all_modules:
+            items = client.get_all(f"/courses/{cid}/modules/{m['id']}/items")
+            has_playbook_asgn = any(
+                it.get("type") == "Assignment"
+                and it.get("content_id") in target_assignment_ids
+                for it in items
+            )
+            if not has_playbook_asgn:
+                continue
+            target_modules.append(m)
+            for it in items:
+                if it.get("type") == "Page" and it.get("page_url"):
+                    target_page_urls.add(it["page_url"])
+
+        # Pages: those referenced by a playbook module's Page items, OR
+        # whose title matches a current WEEKS module name. The title fallback
+        # makes reset still work if modules have already been deleted (e.g.
+        # from a previous failed reset run).
+        module_titles = {wname for _, wname, _ in WEEKS}
+        all_pages = client.get_all(f"/courses/{cid}/pages")
+        target_pages = [
+            p for p in all_pages
+            if p.get("url") in target_page_urls
+            or p.get("title") in module_titles
+        ]
+
+        # Files in the playbook-media folder (stable folder name)
+        folders = client.get_all(f"/courses/{cid}/folders")
+        media_folder = next(
+            (f for f in folders if f.get("name") == paths["canvas_media_folder"]),
+            None,
+        )
+        target_files = (
+            client.get_all(f"/folders/{media_folder['id']}/files")
+            if media_folder else []
+        )
+
+        # Report
+        emit(f"Course {cid}: playbook resources discovered")
+        emit(f"  modules        ({len(target_modules)})")
+        for m in target_modules:
+            emit(f"    - {m['name']}  (id={m['id']})")
+        emit(f"  pages          ({len(target_pages)})")
+        for p in target_pages:
+            emit(f"    - {p['title']}  (url={p['url']})")
+        emit(f"  assignments    ({len(target_assignments)})")
+        for a in target_assignments:
+            emit(f"    - {a['name']}  (id={a['id']})")
+        emit(f"  asgn groups    ({len(target_ags)})")
+        for g in target_ags:
+            emit(f"    - {g['name']}  (id={g['id']})")
+        emit(f"  media files    ({len(target_files)}"
+             f" in '{paths['canvas_media_folder']}' folder)")
+        for f in target_files:
+            emit(f"    - {f['display_name']}  (id={f['id']})")
+
+        total = (
+            len(target_modules) + len(target_pages) + len(target_assignments)
+            + len(target_ags) + len(target_files)
+        )
+
+        if total == 0:
+            emit("\nNothing to delete.")
+            return
+
+        if dry_run:
+            emit(f"\nDry-run. {total} resource(s) would be deleted. "
+                 "Pass --commit to actually delete.")
+            return
+
+        confirm_or_abort(
+            f"Permanently delete {total} resource(s) from course {cid}? "
+            "This cannot be undone.",
+            yes=yes, dry_run=False,
+        )
+
+        # Delete in safe order: modules first (drops items), then the
+        # underlying content + group + files.
+        emit("")
+        for m in target_modules:
+            client.delete(f"/courses/{cid}/modules/{m['id']}")
+            emit(f"  - module        {m['name']}")
+        for p in target_pages:
+            # Canvas refuses to delete the front page; demote it first.
+            if p.get("front_page"):
+                client.put(
+                    f"/courses/{cid}/pages/{p['url']}",
+                    {"wiki_page": {"front_page": False}},
+                )
+            client.delete(f"/courses/{cid}/pages/{p['url']}")
+            emit(f"  - page          {p['title']}")
+        for a in target_assignments:
+            client.delete(f"/courses/{cid}/assignments/{a['id']}")
+            emit(f"  - assignment    {a['name']}")
+        for g in target_ags:
+            client.delete(f"/courses/{cid}/assignment_groups/{g['id']}")
+            emit(f"  - asgn group    {g['name']}")
+        for f in target_files:
+            client.delete(f"/files/{f['id']}")
+            emit(f"  - media file    {f['display_name']}")
+
+        emit(f"\nDeleted {total} resource(s). Run `playbook deploy` to rebuild.")
+    except typer.Exit:
+        raise
     except Exception as exc:
         raise handle_canvas_error(exc)

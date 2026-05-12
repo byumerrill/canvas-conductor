@@ -44,7 +44,7 @@ class TestBasicMethods:
     def test_put_updates(self, mock_responses, api):
         mock_responses.put(f"{api}/courses/1", json={"id": 1, "name": "X"})
         c = make_client()
-        result = c.put("/courses/1", {"course[name]": "X"})
+        result = c.put("/courses/1", {"course": {"name": "X"}})
         assert result["name"] == "X"
 
     def test_delete_returns_true(self, mock_responses, api):

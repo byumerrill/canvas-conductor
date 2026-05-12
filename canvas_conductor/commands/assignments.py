@@ -274,13 +274,13 @@ def bulk_dates(
 
         plan: list[tuple[int, str, dict]] = []
         for item in items:
-            payload: dict = {}
+            inner: dict = {}
             for field in target_fields:
                 shifted = _shift_iso(item.get(field), delta)
                 if shifted:
-                    payload[f"assignment[{field}]"] = shifted
-            if payload:
-                plan.append((item["id"], item.get("name", ""), payload))
+                    inner[field] = shifted
+            if inner:
+                plan.append((item["id"], item.get("name", ""), {"assignment": inner}))
 
         if not plan:
             emit("No assignments have dates to shift.")

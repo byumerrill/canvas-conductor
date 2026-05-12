@@ -189,7 +189,7 @@ def set_front_page(
         client = get_client(verbose=verbose)
         client.put(
             f"/courses/{cid}/pages/{url}",
-            {"wiki_page[front_page]": True, "wiki_page[published]": True},
+            {"wiki_page": {"front_page": True, "published": True}},
         )
         emit(f"Set page '{url}' as front page.")
     except Exception as exc:
