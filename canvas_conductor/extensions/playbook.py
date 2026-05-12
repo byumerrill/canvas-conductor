@@ -855,16 +855,18 @@ def deploy(
                     gs_page_url = gs_page.get("url")
                     emit(f"  page:   created url='{gs_page_url}'")
 
-                # Module item linking the page (idempotent on item title)
+                # Module item linking the page (idempotent on page_url)
                 existing_items = client.get_all(
                     f"/courses/{cid}/modules/{gs_module_id}/items"
                 )
-                titles_present = {it.get("title") for it in existing_items}
-                if gs_page_url and GETTING_STARTED_PAGE_TITLE not in titles_present:
+                page_urls_present = {
+                    it.get("page_url") for it in existing_items
+                    if it.get("type") == "Page"
+                }
+                if gs_page_url and gs_page_url not in page_urls_present:
                     client.post(
                         f"/courses/{cid}/modules/{gs_module_id}/items",
                         data={"module_item": {
-                            "title": GETTING_STARTED_PAGE_TITLE,
                             "type": "Page",
                             "page_url": gs_page_url,
                         }},
@@ -990,35 +992,35 @@ def deploy(
             elif asgn_meta:
                 emit(f"  assignment: would create '{asgn_meta['name']}'")
 
-            # Module items: page → Media subheader → Deliverable subheader → assignment
+            # Module items: just the content page and its deliverable, in
+            # that order. No subheaders — keeping the per-module structure
+            # minimal so students see "page → assignment" with no clutter.
+            # Idempotency anchors on page_url / content_id rather than
+            # display title (Canvas auto-renames items to match the page
+            # or assignment title, so title-based checks miss duplicates).
             if client and module_id:
                 existing_items = client.get_all(f"/courses/{cid}/modules/{module_id}/items")
-                titles_present = {it.get("title") for it in existing_items}
+                page_urls_present = {
+                    it.get("page_url") for it in existing_items
+                    if it.get("type") == "Page"
+                }
+                assignment_ids_present = {
+                    it.get("content_id") for it in existing_items
+                    if it.get("type") == "Assignment"
+                }
 
-                if page_url and f"{module_name} Content" not in titles_present:
+                if page_url and page_url not in page_urls_present:
                     client.post(
                         f"/courses/{cid}/modules/{module_id}/items",
                         data={"module_item": {
-                            "title": f"{module_name} Content",
                             "type": "Page",
                             "page_url": page_url,
                         }},
                     )
-                if "Media" not in titles_present:
-                    client.post(
-                        f"/courses/{cid}/modules/{module_id}/items",
-                        data={"module_item": {"title": "Media", "type": "SubHeader"}},
-                    )
-                if "Deliverable" not in titles_present:
-                    client.post(
-                        f"/courses/{cid}/modules/{module_id}/items",
-                        data={"module_item": {"title": "Deliverable", "type": "SubHeader"}},
-                    )
-                if assignment_id and asgn_meta["name"] not in titles_present:
+                if assignment_id and assignment_id not in assignment_ids_present:
                     client.post(
                         f"/courses/{cid}/modules/{module_id}/items",
                         data={"module_item": {
-                            "title": asgn_meta["name"],
                             "type": "Assignment",
                             "content_id": assignment_id,
                         }},
