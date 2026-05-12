@@ -29,6 +29,8 @@ def _isolate_env(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("CANVAS_BASE_URL", TEST_BASE_URL)
     monkeypatch.setenv("CANVAS_TOKEN", TEST_TOKEN)
+    # Don't let an ambient CONDUCTOR_CONFIG from the dev's shell leak into tests.
+    monkeypatch.delenv("CONDUCTOR_CONFIG", raising=False)
     cfg_module.reset_caches()
     yield
     cfg_module.reset_caches()

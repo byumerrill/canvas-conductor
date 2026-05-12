@@ -105,3 +105,27 @@ output_format = "table"
 """
     )
     assert cfg.get_courses() == {}
+
+
+def test_conductor_config_env_var_override(tmp_path, monkeypatch):
+    """CONDUCTOR_CONFIG should take precedence over the walk-up search."""
+    external = tmp_path / "external.toml"
+    external.write_text(
+        """
+[courses.foo]
+id = 4242
+name = "Foo 101"
+"""
+    )
+    monkeypatch.setenv("CONDUCTOR_CONFIG", str(external))
+    cfg.reset_caches()
+    assert cfg.get_course_id("foo") == 4242
+
+
+def test_conductor_config_env_var_missing_file(tmp_path, monkeypatch):
+    """CONDUCTOR_CONFIG pointing at a non-existent file should raise."""
+    monkeypatch.setenv("CONDUCTOR_CONFIG", str(tmp_path / "nope.toml"))
+    cfg.reset_caches()
+    with pytest.raises(ConfigError) as exc:
+        cfg.find_config_file()
+    assert "CONDUCTOR_CONFIG" in str(exc.value)

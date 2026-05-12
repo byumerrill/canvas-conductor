@@ -23,6 +23,7 @@ else:  # pragma: no cover - 3.10 fallback
 
 CONFIG_FILENAME = "config.toml"
 ENV_FILENAME = ".env"
+CONFIG_ENV_VAR = "CONDUCTOR_CONFIG"
 
 
 def _walk_up_for(filename: str, start: Path | None = None) -> Path | None:
@@ -40,6 +41,26 @@ def find_env_file() -> Path | None:
 
 
 def find_config_file() -> Path | None:
+    """Locate config.toml.
+
+    Resolution order:
+        1. If CONDUCTOR_CONFIG is set, use that path (must point to a file).
+        2. Otherwise walk up from the current working directory looking for
+           `config.toml`.
+
+    Setting CONDUCTOR_CONFIG lets a single master config live outside any
+    particular checkout (e.g., in a Dropbox-synced teaching hub) so multiple
+    machines and tools can share one course list.
+    """
+    override = os.environ.get(CONFIG_ENV_VAR)
+    if override:
+        path = Path(override).expanduser()
+        if path.is_file():
+            return path
+        raise ConfigError(
+            f"{CONFIG_ENV_VAR} is set to {override!r} but no file exists at "
+            "that path. Unset the variable or point it at a valid config.toml."
+        )
     return _walk_up_for(CONFIG_FILENAME)
 
 

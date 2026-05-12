@@ -2,8 +2,6 @@
 
 A command-line tool for managing Canvas LMS courses. Wraps the Canvas REST API into composable commands for instructors, course designers, and administrators who want to automate course management from the terminal.
 
-> **Working with an AI agent?** Point it at [`AGENTS.md`](AGENTS.md) before asking it to extend the CLI or run real tasks here. That file is a dense, agent-targeted on-ramp covering the extension pattern, client API, conventions, and Canvas-specific gotchas. A typical prompt: *"Read AGENTS.md, then add a command that does X."*
-
 ## Quick Start
 
 ### 1. Install uv (if not already installed)
@@ -23,9 +21,8 @@ uv sync
 ### 3. Configure
 
 ```bash
-cp .env.example .env             # Canvas URL + API token (gitignored)
-cp config.toml.example config.toml  # Course aliases (gitignored)
-# Edit both files to match your Canvas instance and the courses you manage.
+cp .env.example .env
+# Edit .env with your Canvas URL and API token
 ```
 
 Generate a Canvas API token:
@@ -59,14 +56,17 @@ CANVAS_TOKEN=7407~your_token_here
 
 ### Course Configuration (`config.toml`)
 
-The live `config.toml` is gitignored so that course ids and any
-instructor-specific paths stay out of the public repository. Start from
-the template:
+By default Conductor walks up from the current working directory to find a
+`config.toml`. If you'd rather keep your course list in a single shared
+location (for example, a Dropbox-synced teaching folder used by multiple
+machines or other tools), point the `CONDUCTOR_CONFIG` environment variable at
+that file:
 
 ```bash
-cp config.toml.example config.toml
-# edit config.toml to define your course aliases
+export CONDUCTOR_CONFIG="$HOME/Dropbox/agent-sync/teaching/teaching-os/canvas-conductor.toml"
 ```
+
+When `CONDUCTOR_CONFIG` is set it takes precedence over the walk-up search.
 
 Define the courses you manage with short aliases:
 
@@ -243,8 +243,6 @@ conductor modules list -c is402 -o csv > modules.csv
 ## Extensions
 
 Canvas Conductor supports user-defined extensions. Drop a Python file into the `extensions/` directory to add custom commands.
-
-If you'd rather have an agent write the extension for you, hand it [`AGENTS.md`](AGENTS.md) and a one-line goal — that file documents the extension pattern, available helpers, conventions, and Canvas-specific quirks in a form agents can act on directly.
 
 ### Writing an Extension
 
