@@ -68,14 +68,18 @@ canvas_media_folder = "playbook-media"
 # appear in the Canvas To-Do list and Calendar. ISO yyyy-mm-dd format;
 # deploy appends T23:59:00Z. Omit the section to deploy without dates.
 #
+# Example below: a slow Mon→Sun cadence across the 5 weeks before a
+# fall semester starts. Page becomes a To-Do on Monday, deliverable
+# is due Sunday — adjust to match your section calendar.
+#
 # [playbook.schedule]
-# step_1_page  = "2026-09-15"
-# step_1_due   = "2026-09-18"
-# step_2_page  = "2026-09-22"
-# step_2_due   = "2026-09-25"
-# step_3_page  = "2026-09-29"
-# step_3_due   = "2026-10-02"
-# step_4_page  = "2026-10-06"
-# step_4_due   = "2026-10-09"
-# step_5_page  = "2026-10-13"
-# step_5_due   = "2026-10-16"
+# step_1_page  = "2026-08-03"
+# step_1_due   = "2026-08-09"
+# step_2_page  = "2026-08-10"
+# step_2_due   = "2026-08-16"
+# step_3_page  = "2026-08-17"
+# step_3_due   = "2026-08-23"
+# step_4_page  = "2026-08-24"
+# step_4_due   = "2026-08-30"
+# step_5_page  = "2026-08-31"
+# step_5_due   = "2026-09-06"
