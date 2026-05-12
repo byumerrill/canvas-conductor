@@ -84,6 +84,16 @@ app = typer.Typer(
 # Per-week structure (markdown filenames + assignment shape)
 # ============================================================================
 
+# Course-level pages and modules that frame the per-week sequence.
+# - Course Home Header: a standalone wiki page Canvas auto-renders at the top
+#   of the course homepage (above the module list). Title is magic.
+# - Getting Started: a "module 0" with orientation content for students,
+#   shown before the five weekly Step modules.
+COURSE_HOME_HEADER_TITLE = "Course Home Header"
+GETTING_STARTED_MODULE = "Getting Started"
+GETTING_STARTED_PAGE_TITLE = "Getting Started"
+GETTING_STARTED_CONTENT_FILE = "getting-started.md"
+
 # (week_key, module_name, content_filename)
 WEEKS: list[tuple[str, str, str]] = [
     ("week_1", "Step 1: Optimize Your Resume",                                    "week-1-resumes.md"),
@@ -92,6 +102,16 @@ WEEKS: list[tuple[str, str, str]] = [
     ("week_4", "Step 4: Interview with Confidence",                               "week-4-interview-prep.md"),
     ("week_5", "Step 5: Launch Your Career",                                      "week-5-recruiting-plan.md"),
 ]
+
+# Maps each week_key to the [playbook.schedule] config-key prefix used to
+# look up to-do dates (e.g. "step_1_page", "step_1_due"). See Change 3.
+WEEK_KEY_TO_SCHEDULE_PREFIX: dict[str, str] = {
+    "week_1": "step_1",
+    "week_2": "step_2",
+    "week_3": "step_3",
+    "week_4": "step_4",
+    "week_5": "step_5",
+}
 
 ASSIGNMENTS: dict[str, dict[str, Any]] = {
     "week_1": {
@@ -172,6 +192,19 @@ MEDIA_PLACEMENTS: dict[str, list[tuple[str, str, str, str]]] = {
 # ============================================================================
 # Path resolution (reads [playbook] from canvas-conductor's config.toml)
 # ============================================================================
+
+def _playbook_schedule() -> dict[str, str]:
+    """Return the `[playbook.schedule]` config section, or {} if missing."""
+    return get_config().get("playbook", {}).get("schedule", {}) or {}
+
+
+def _todo_datetime(date_iso: str | None) -> str | None:
+    """Convert a YYYY-MM-DD date string into a Canvas-ready ISO datetime
+    (end-of-day UTC). Returns None for falsy input."""
+    if not date_iso:
+        return None
+    return f"{date_iso}T23:59:00Z"
+
 
 def _playbook_paths() -> dict[str, Any]:
     cfg = get_config().get("playbook", {}) or {}
@@ -460,6 +493,45 @@ def _md_to_canvas_html(
     return f'<div style="{WRAPPER_STYLE}">\n{html}\n</div>'
 
 
+def _course_home_header_body(course_id: int, file_ids: dict[str, int]) -> str:
+    """Build the standalone wiki-page body that Canvas renders above the
+    module list on the course homepage. Uses `playbook-banner.png` from
+    the playbook-media folder if present; otherwise renders a styled
+    placeholder until a real banner is uploaded.
+    """
+    banner_fid = file_ids.get("playbook-banner.png")
+    if banner_fid:
+        banner = (
+            f'<img src="/courses/{course_id}/files/{banner_fid}/preview" '
+            f'alt="IS Career Playbook banner" '
+            f'style="display: block; width: 100%; height: auto; '
+            f'border-radius: 0.5rem;">'
+        )
+    else:
+        banner = (
+            '<div style="background: #f3f4f6; color: #6b7280; '
+            'padding: 3rem 2rem; text-align: center; '
+            'border: 1px dashed #d1d5db; border-radius: 0.5rem; '
+            'font-style: italic;">'
+            'Banner image coming soon'
+            '</div>'
+        )
+    welcome = (
+        '<p>Welcome to the <strong>IS Career Playbook</strong>, a 5-step '
+        'sequence designed to help you build a professional presence, '
+        'sharpen your interview skills, and launch your job search with '
+        'confidence. Work through each step at your own pace, complete the '
+        'deliverables, and you will be career-ready by the end of the '
+        'semester.</p>'
+    )
+    return (
+        f'<div style="{WRAPPER_STYLE}">'
+        f'{banner}'
+        f'<div style="margin-top: 1.5rem;">{welcome}</div>'
+        f'</div>'
+    )
+
+
 def _course_files(client, course_id: int, folder_name: str) -> dict[str, int]:
     """Return {filename: file_id} for files in the named course folder."""
     folders = client.get_all(f"/courses/{course_id}/folders")
@@ -661,6 +733,8 @@ def deploy(
         cid = get_course_id(course)
         paths = _playbook_paths()
 
+        schedule = _playbook_schedule()
+
         if dry_run:
             client = None
             file_ids: dict[str, int] = {}
@@ -670,6 +744,11 @@ def deploy(
             file_ids = _course_files(client, cid, paths["canvas_media_folder"])
             emit(f"Found {len(file_ids)} files in '{paths['canvas_media_folder']}' folder.")
             emit(f"\nDeploying playbook to course {cid}\n")
+
+        if schedule:
+            emit(f"Schedule: {len(schedule)} entries from [playbook.schedule].")
+        else:
+            emit("Schedule: none configured ([playbook.schedule] absent or empty).")
 
         # 1. Set default view to modules
         emit("Ensuring course default_view is 'modules'...")
@@ -693,10 +772,121 @@ def deploy(
                 ag_id = ag["id"]
                 emit(f"  created assignment group id={ag_id}")
 
-        # 3. Per-week: module + page (with embedded media) + assignment + module items
-        for position, (week_key, module_name, content_filename) in enumerate(WEEKS, 1):
+        # 3. Course Home Header — standalone page Canvas auto-renders at the
+        # top of the course homepage. Not added to any module.
+        emit(f"\nEnsuring '{COURSE_HOME_HEADER_TITLE}' page...")
+        if client:
+            header_body = _course_home_header_body(cid, file_ids)
+            existing_pages = client.get_all(
+                f"/courses/{cid}/pages",
+                params={"search_term": COURSE_HOME_HEADER_TITLE},
+            )
+            header_page = next(
+                (p for p in existing_pages if p.get("title") == COURSE_HOME_HEADER_TITLE),
+                None,
+            )
+            if header_page:
+                client.put(
+                    f"/courses/{cid}/pages/{header_page['url']}",
+                    {"wiki_page": {"body": header_body}},
+                )
+                emit(f"  reuse url='{header_page['url']}', body updated")
+            else:
+                new_page = client.post(
+                    f"/courses/{cid}/pages",
+                    data={"wiki_page": {
+                        "title": COURSE_HOME_HEADER_TITLE,
+                        "body": header_body,
+                        "published": False,
+                    }},
+                )
+                emit(f"  created url='{new_page.get('url')}'")
+        else:
+            emit(f"  would create page '{COURSE_HOME_HEADER_TITLE}'")
+
+        # 4. Getting Started "module 0" — orientation page before the steps
+        emit(f"\nEnsuring '{GETTING_STARTED_MODULE}' module + page (position 1)...")
+        gs_content_path: Path = paths["content_dir"] / GETTING_STARTED_CONTENT_FILE
+        gs_module_id: int | None = None
+        gs_page_url: str | None = None
+        if client:
+            existing_modules = client.get_all(f"/courses/{cid}/modules")
+            gs_mod = next(
+                (m for m in existing_modules if m.get("name") == GETTING_STARTED_MODULE),
+                None,
+            )
+            if gs_mod:
+                gs_module_id = gs_mod["id"]
+                emit(f"  module: reuse id={gs_module_id}")
+            else:
+                gs_mod = client.post(
+                    f"/courses/{cid}/modules",
+                    data={"module": {"name": GETTING_STARTED_MODULE, "position": 1}},
+                )
+                gs_module_id = gs_mod["id"]
+                emit(f"  module: created id={gs_module_id}")
+
+            if gs_content_path.is_file():
+                gs_body = _md_to_canvas_html(gs_content_path, cid, [], file_ids)
+                existing_pages = client.get_all(
+                    f"/courses/{cid}/pages",
+                    params={"search_term": GETTING_STARTED_PAGE_TITLE},
+                )
+                gs_page = next(
+                    (p for p in existing_pages if p.get("title") == GETTING_STARTED_PAGE_TITLE),
+                    None,
+                )
+                if gs_page:
+                    gs_page_url = gs_page["url"]
+                    client.put(
+                        f"/courses/{cid}/pages/{gs_page_url}",
+                        {"wiki_page": {"body": gs_body}},
+                    )
+                    emit(f"  page:   reuse url='{gs_page_url}', body updated")
+                else:
+                    gs_page = client.post(
+                        f"/courses/{cid}/pages",
+                        data={"wiki_page": {
+                            "title": GETTING_STARTED_PAGE_TITLE,
+                            "body": gs_body,
+                            "published": False,
+                        }},
+                    )
+                    gs_page_url = gs_page.get("url")
+                    emit(f"  page:   created url='{gs_page_url}'")
+
+                # Module item linking the page (idempotent on item title)
+                existing_items = client.get_all(
+                    f"/courses/{cid}/modules/{gs_module_id}/items"
+                )
+                titles_present = {it.get("title") for it in existing_items}
+                if gs_page_url and GETTING_STARTED_PAGE_TITLE not in titles_present:
+                    client.post(
+                        f"/courses/{cid}/modules/{gs_module_id}/items",
+                        data={"module_item": {
+                            "title": GETTING_STARTED_PAGE_TITLE,
+                            "type": "Page",
+                            "page_url": gs_page_url,
+                        }},
+                    )
+            else:
+                emit(f"  page:   SKIP (markdown not found at {gs_content_path})")
+        else:
+            emit(f"  would create module '{GETTING_STARTED_MODULE}' and its page")
+
+        # 5. Per-week: module + page (with embedded media) + assignment + module items
+        # Position 2 onward — Getting Started occupies position 1.
+        for position, (week_key, module_name, content_filename) in enumerate(WEEKS, 2):
             emit(f"\n--- {module_name} ---")
             content_path: Path = paths["content_dir"] / content_filename
+            sched_prefix = WEEK_KEY_TO_SCHEDULE_PREFIX.get(week_key, "")
+            todo_at = _todo_datetime(schedule.get(f"{sched_prefix}_page"))
+            due_at = _todo_datetime(schedule.get(f"{sched_prefix}_due"))
+            if todo_at or due_at:
+                emit(
+                    f"  schedule: page todo={todo_at or '—'}, "
+                    f"assignment due={due_at or '—'}"
+                )
 
             # Module
             module_id: int | None = None
@@ -732,19 +922,25 @@ def deploy(
                     page = next((p for p in existing_pages if p.get("title") == module_name), None)
                     if page:
                         page_url = page["url"]
+                        put_payload: dict[str, Any] = {"body": html_body}
+                        if todo_at:
+                            put_payload["student_todo_at"] = todo_at
                         client.put(
                             f"/courses/{cid}/pages/{page_url}",
-                            {"wiki_page": {"body": html_body}},
+                            {"wiki_page": put_payload},
                         )
                         emit(f"    reuse url='{page_url}', body updated")
                     else:
+                        create_payload: dict[str, Any] = {
+                            "title": module_name,
+                            "body": html_body,
+                            "published": False,
+                        }
+                        if todo_at:
+                            create_payload["student_todo_at"] = todo_at
                         page = client.post(
                             f"/courses/{cid}/pages",
-                            data={"wiki_page": {
-                                "title": module_name,
-                                "body": html_body,
-                                "published": False,
-                            }},
+                            data={"wiki_page": create_payload},
                         )
                         page_url = page.get("url")
                         emit(f"    created url='{page_url}'")
@@ -763,6 +959,11 @@ def deploy(
                 if asgn:
                     assignment_id = asgn["id"]
                     emit(f"  assignment: reuse id={assignment_id} ({asgn_meta['name']})")
+                    if due_at:
+                        client.put(
+                            f"/courses/{cid}/assignments/{assignment_id}",
+                            {"assignment": {"due_at": due_at}},
+                        )
                 else:
                     asgn_payload: dict[str, Any] = {
                         "name": asgn_meta["name"],
@@ -778,6 +979,8 @@ def deploy(
                         asgn_payload["allowed_extensions"] = asgn_meta["allowed_extensions"]
                     if ag_id:
                         asgn_payload["assignment_group_id"] = ag_id
+                    if due_at:
+                        asgn_payload["due_at"] = due_at
                     asgn = client.post(
                         f"/courses/{cid}/assignments",
                         data={"assignment": asgn_payload},
@@ -842,6 +1045,7 @@ def sync_pages(
     try:
         cid = get_course_id(course)
         paths = _playbook_paths()
+        schedule = _playbook_schedule()
         client = get_client(verbose=verbose)
 
         file_ids = _course_files(client, cid, paths["canvas_media_folder"])
@@ -865,10 +1069,16 @@ def sync_pages(
                 MEDIA_PLACEMENTS.get(week_key, []), file_ids,
             )
             slug = page_map[module_name]
+            sched_prefix = WEEK_KEY_TO_SCHEDULE_PREFIX.get(week_key, "")
+            todo_at = _todo_datetime(schedule.get(f"{sched_prefix}_page"))
             tag = "[DRY-RUN] " if dry_run else ""
-            emit(f"  {tag}{module_name}: {len(html_body)} chars -> {slug}")
+            todo_note = f" + todo:{todo_at}" if todo_at else ""
+            emit(f"  {tag}{module_name}: {len(html_body)} chars -> {slug}{todo_note}")
             if not dry_run:
-                client.put(f"/courses/{cid}/pages/{slug}", {"wiki_page": {"body": html_body}})
+                payload: dict[str, Any] = {"body": html_body}
+                if todo_at:
+                    payload["student_todo_at"] = todo_at
+                client.put(f"/courses/{cid}/pages/{slug}", {"wiki_page": payload})
 
         emit("\nDone.")
     except Exception as exc:
@@ -929,7 +1139,10 @@ def reset(
         target_assignment_ids = {a["id"] for a in target_assignments}
 
         # Modules: any module that contains a playbook-managed assignment
-        # as an item. Walk items to find associated pages too.
+        # as an item, OR whose name matches the Getting Started orientation
+        # module (which has no assignment to anchor on). Walk items to find
+        # associated pages too.
+        anchored_module_names = {GETTING_STARTED_MODULE}
         all_modules = client.get_all(f"/courses/{cid}/modules")
         target_modules: list[dict] = []
         target_page_urls: set[str] = set()
@@ -940,7 +1153,8 @@ def reset(
                 and it.get("content_id") in target_assignment_ids
                 for it in items
             )
-            if not has_playbook_asgn:
+            name_matches = m.get("name") in anchored_module_names
+            if not has_playbook_asgn and not name_matches:
                 continue
             target_modules.append(m)
             for it in items:
@@ -948,10 +1162,13 @@ def reset(
                     target_page_urls.add(it["page_url"])
 
         # Pages: those referenced by a playbook module's Page items, OR
-        # whose title matches a current WEEKS module name. The title fallback
-        # makes reset still work if modules have already been deleted (e.g.
-        # from a previous failed reset run).
+        # whose title matches a current WEEKS module name, the Getting Started
+        # orientation page, or the Course Home Header. The title fallback makes
+        # reset still work if modules have already been deleted (e.g. from a
+        # previous failed reset run).
         module_titles = {wname for _, wname, _ in WEEKS}
+        module_titles.add(GETTING_STARTED_PAGE_TITLE)
+        module_titles.add(COURSE_HOME_HEADER_TITLE)
         all_pages = client.get_all(f"/courses/{cid}/pages")
         target_pages = [
             p for p in all_pages

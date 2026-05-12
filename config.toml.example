@@ -61,3 +61,21 @@ local_media_cache = "/tmp/playbook-media"
 media_urls_file = "../canvas-integration/media-urls.toml"
 # Folder name inside the Canvas course where assets are uploaded.
 canvas_media_folder = "playbook-media"
+
+
+# Optional: section-specific to-do dates. When set, deploy attaches
+# `student_todo_at` to each page and `due_at` to each assignment so they
+# appear in the Canvas To-Do list and Calendar. ISO yyyy-mm-dd format;
+# deploy appends T23:59:00Z. Omit the section to deploy without dates.
+#
+# [playbook.schedule]
+# step_1_page  = "2026-09-15"
+# step_1_due   = "2026-09-18"
+# step_2_page  = "2026-09-22"
+# step_2_due   = "2026-09-25"
+# step_3_page  = "2026-09-29"
+# step_3_due   = "2026-10-02"
+# step_4_page  = "2026-10-06"
+# step_4_due   = "2026-10-09"
+# step_5_page  = "2026-10-13"
+# step_5_due   = "2026-10-16"
