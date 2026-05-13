@@ -1,0 +1,11 @@
+{
+  "name": "learning-suite-extractor",
+  "version": "0.1.0",
+  "description": "Extract course metadata from BYU Learning Suite into a portable on-disk staging area. Captures schedule, assignments, syllabus, and content page index for faculty who want a versionable snapshot of their course outside the LMS.",
+  "author": {
+    "name": "Dave Wilson",
+    "email": "davidwilson@byu.edu"
+  },
+  "keywords": ["byu", "learning-suite", "lms", "teaching", "course-management"],
+  "license": "MIT"
+}
