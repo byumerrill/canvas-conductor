@@ -10,15 +10,14 @@ A command-line tool for managing Canvas LMS courses. Wraps the Canvas REST API i
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-### 2. Clone and install
+### 2. Clone the repo
 
 ```bash
-git clone https://github.com/youruser/canvas-conductor.git
-cd canvas-conductor
-uv sync
+git clone https://github.com/youruser/canvas-conductor.git ~/code/canvas-conductor
+cd ~/code/canvas-conductor
 ```
 
-### 3. Configure
+### 3. Configure credentials
 
 ```bash
 cp .env.example .env
@@ -31,16 +30,56 @@ Generate a Canvas API token:
 3. Under "Approved Integrations", click "+ New Access Token"
 4. Copy the token into your `.env` file
 
-### 4. Validate your setup
+### 4. Install the `conductor` CLI on your PATH
+
+The recommended pattern is `uv tool install --editable`. This drops a
+`conductor` binary in `~/.local/bin/` (managed by uv in an isolated venv) but
+points it at your source checkout, so any code edits are picked up on the
+next invocation without reinstalling.
 
 ```bash
-uv run conductor config validate
+uv tool install --editable ~/code/canvas-conductor
 ```
 
-### 5. Try it out
+If `~/.local/bin` isn't on your PATH yet, uv will say so. Fix it with:
 
 ```bash
-uv run conductor courses list
+uv tool update-shell
+```
+
+After this you can `cd` anywhere and run `conductor ...` directly.
+
+### 5. Validate and try it out
+
+```bash
+conductor config validate
+conductor courses list
+```
+
+### Alternative install patterns
+
+- **Light alias.** If you'd rather not install a managed tool, add an alias
+  to your shell rc:
+
+  ```bash
+  alias conductor='uv run --project ~/code/canvas-conductor conductor'
+  ```
+
+  Trades a small uv-resolver startup cost on each call for not having to
+  manage a separate install. `which conductor` will show the alias rather
+  than a real binary.
+
+- **Project-local invocation.** From inside the repo, `uv run conductor ...`
+  always works without any global setup. Handy for one-off use or while
+  developing the CLI itself.
+
+### Updating after pulls or new dependencies
+
+With the `--editable` install, code changes are live. If you `git pull` and
+the pyproject grew new dependencies, refresh the tool's venv:
+
+```bash
+uv tool upgrade canvas-conductor
 ```
 
 ## Configuration
@@ -68,7 +107,9 @@ export CONDUCTOR_CONFIG="$HOME/Dropbox/agent-sync/teaching/teaching-os/canvas-co
 
 When `CONDUCTOR_CONFIG` is set it takes precedence over the walk-up search.
 
-Define the courses you manage with short aliases:
+Define the courses you manage with short aliases. Aliases can include
+hyphens. Each `[courses.<alias>]` block can also carry sub-blocks
+consumed by extensions (e.g., `[courses.is-career-playbook.playbook]`):
 
 ```toml
 [defaults]
@@ -76,15 +117,15 @@ output_format = "table"
 per_page = 100
 confirm_destructive = true
 
-[courses.is402]
-id = 35416
-name = "IS 402: Career Preparation"
-term = "Summer 2026"
-
 [courses.is566]
 id = 33431
 name = "IS 566: Data Engineering"
-term = "Fall 2026"
+term = "Winter 2027"
+
+[courses.is-career-playbook]
+id = 35416
+name = "IS Career Playbook (development course)"
+term = "Spring Semester 2026"
 ```
 
 Use the short alias with `--course` (or `-c`):

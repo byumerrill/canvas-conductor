@@ -35,8 +35,8 @@ What this extension demonstrates for future authors
 - Folder-scoped file lookup (`_course_files`).
 - Markdown → embed-aware HTML → Canvas-sanitizer-aware inline styling.
 - Shelling out to a sibling CLI (`nlm`) for upstream artifact fetching.
-- Reading project-specific config under a `[playbook]` section in the
-  shared `config.toml`.
+- Reading project-specific config under a per-course
+  `[courses.<alias>.playbook]` section in the shared `config.toml`.
 
 Commands
 --------
@@ -65,7 +65,13 @@ from canvas_conductor.commands._common import (
     emit,
     handle_canvas_error,
 )
-from canvas_conductor.config import find_config_file, get_config, get_course_id
+from canvas_conductor.config import (
+    find_config_file,
+    get_config,
+    get_course_id,
+    get_courses,
+)
+from canvas_conductor.exceptions import ConfigError
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -103,7 +109,7 @@ WEEKS: list[tuple[str, str, str]] = [
     ("week_5", "Step 5: Launch Your Career",                                      "week-5-recruiting-plan.md"),
 ]
 
-# Maps each week_key to the [playbook.schedule] config-key prefix used to
+# Maps each week_key to the [courses.<alias>.playbook.schedule] config-key prefix used to
 # look up to-do dates (e.g. "step_1_page", "step_1_due"). See Change 3.
 WEEK_KEY_TO_SCHEDULE_PREFIX: dict[str, str] = {
     "week_1": "step_1",
@@ -190,12 +196,64 @@ MEDIA_PLACEMENTS: dict[str, list[tuple[str, str, str, str]]] = {
 
 
 # ============================================================================
-# Path resolution (reads [playbook] from canvas-conductor's config.toml)
+# Path resolution
+#
+# Reads [courses.<alias>.playbook] from canvas-conductor's config.toml, e.g.:
+#
+#   [courses.is-career-playbook]
+#   id = 35416
+#   name = "IS Career Playbook"
+#   term = "Spring Semester 2026"
+#
+#   [courses.is-career-playbook.playbook]
+#   content_dir       = "/Users/dave/code/is-career-playbook/content"
+#   local_media_cache = "/tmp/playbook-media"
+#   media_urls_file   = "/Users/dave/code/is-career-playbook/canvas-integration/media-urls.toml"
+#
+# Per-course nesting means multiple courses can have their own playbook
+# config without colliding. The course alias is whatever you pass to `-c`,
+# or the single configured course if there's only one.
 # ============================================================================
 
-def _playbook_schedule() -> dict[str, str]:
-    """Return the `[playbook.schedule]` config section, or {} if missing."""
-    return get_config().get("playbook", {}).get("schedule", {}) or {}
+def _resolve_playbook_alias(course: str | None) -> str:
+    """Return the alias whose [courses.<alias>.playbook] block we'll read.
+
+    If `course` is given, use it. Otherwise, if exactly one configured course
+    has a `playbook` sub-block, use that one. Otherwise, raise ConfigError.
+    """
+    courses = get_courses()
+    if course is not None:
+        if course not in courses:
+            keys = ", ".join(sorted(courses)) or "(none)"
+            raise ConfigError(
+                f"Course '{course}' not found in config.toml. Available: {keys}"
+            )
+        return course
+
+    candidates = [k for k, v in courses.items() if isinstance(v.get("playbook"), dict)]
+    if len(candidates) == 1:
+        return candidates[0]
+    if len(candidates) == 0:
+        raise ConfigError(
+            "No course has a [courses.<alias>.playbook] block. Add one to "
+            "config.toml or pass --course/-c."
+        )
+    keys = ", ".join(sorted(candidates))
+    raise ConfigError(
+        "Multiple courses have a [playbook] sub-block — pass --course/-c "
+        f"with one of: {keys}"
+    )
+
+
+def _playbook_section(course: str | None) -> dict[str, Any]:
+    """Return the `[courses.<alias>.playbook]` config section, or {} if absent."""
+    alias = _resolve_playbook_alias(course)
+    return get_courses().get(alias, {}).get("playbook", {}) or {}
+
+
+def _playbook_schedule(course: str | None) -> dict[str, str]:
+    """Return the `[courses.<alias>.playbook.schedule]` section, or {} if missing."""
+    return _playbook_section(course).get("schedule", {}) or {}
 
 
 def _todo_datetime(date_iso: str | None) -> str | None:
@@ -206,13 +264,13 @@ def _todo_datetime(date_iso: str | None) -> str | None:
     return f"{date_iso}T23:59:00Z"
 
 
-def _playbook_paths() -> dict[str, Any]:
-    cfg = get_config().get("playbook", {}) or {}
+def _playbook_paths(course: str | None) -> dict[str, Any]:
+    cfg = _playbook_section(course)
     cfg_file = find_config_file()
     base = cfg_file.parent if cfg_file else Path.cwd()
 
     def _resolve(key: str, default: str) -> Path:
-        value = Path(cfg.get(key, default))
+        value = Path(cfg.get(key, default)).expanduser()
         if not value.is_absolute():
             value = (base / value).resolve()
         return value
@@ -548,6 +606,8 @@ def _course_files(client, course_id: int, folder_name: str) -> dict[str, int]:
 
 @app.command("fetch-media")
 def fetch_media(
+    course: str = typer.Option(None, "-c", "--course",
+                               help="Course alias whose [playbook] block names the registry."),
     week: str = typer.Option(None, "--week", help="Limit to one week (week_1..week_5)."),
     refresh: bool = typer.Option(False, "--refresh", help="Re-download files even if present."),
     verbose: bool = typer.Option(False, "-v", "--verbose"),
@@ -558,7 +618,7 @@ def fetch_media(
     shells out to `nlm download <type> <notebook_id> --id <artifact_id> --output <path>`.
     Skips files that already exist (use --refresh to re-download).
     """
-    paths = _playbook_paths()
+    paths = _playbook_paths(course)
     media_urls_path: Path = paths["media_urls_file"]
     cache_dir: Path = paths["local_media_cache"]
 
@@ -654,7 +714,7 @@ def upload_media(
     """
     try:
         cid = get_course_id(course)
-        paths = _playbook_paths()
+        paths = _playbook_paths(course)
         client = get_client(verbose=verbose)
 
         existing = _course_files(client, cid, paths["canvas_media_folder"])
@@ -731,9 +791,9 @@ def deploy(
     """
     try:
         cid = get_course_id(course)
-        paths = _playbook_paths()
+        paths = _playbook_paths(course)
 
-        schedule = _playbook_schedule()
+        schedule = _playbook_schedule(course)
 
         if dry_run:
             client = None
@@ -746,9 +806,9 @@ def deploy(
             emit(f"\nDeploying playbook to course {cid}\n")
 
         if schedule:
-            emit(f"Schedule: {len(schedule)} entries from [playbook.schedule].")
+            emit(f"Schedule: {len(schedule)} entries from [courses.{course or '?'}.playbook.schedule].")
         else:
-            emit("Schedule: none configured ([playbook.schedule] absent or empty).")
+            emit("Schedule: none configured ([courses.<alias>.playbook.schedule] absent or empty).")
 
         # 1. Set default view to modules
         emit("Ensuring course default_view is 'modules'...")
@@ -1046,8 +1106,8 @@ def sync_pages(
     """
     try:
         cid = get_course_id(course)
-        paths = _playbook_paths()
-        schedule = _playbook_schedule()
+        paths = _playbook_paths(course)
+        schedule = _playbook_schedule(course)
         client = get_client(verbose=verbose)
 
         file_ids = _course_files(client, cid, paths["canvas_media_folder"])
@@ -1117,7 +1177,7 @@ def reset(
     """
     try:
         cid = get_course_id(course)
-        paths = _playbook_paths()
+        paths = _playbook_paths(course)
         client = get_client(verbose=verbose)
 
         # Discovery: anchor on the most stable signals (assignment group

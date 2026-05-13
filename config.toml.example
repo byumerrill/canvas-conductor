@@ -49,30 +49,38 @@ term = "Fall 2026"
 
 # Playbook extension paths (only needed if you use the bundled
 # `playbook` extension at canvas_conductor/extensions/playbook.py).
-# Paths are resolved relative to this config.toml when not absolute.
-# Delete this whole section if you don't use the playbook extension.
-[playbook]
-# Per-week markdown source files. Anchors within the markdown drive
-# media placement; see canvas-integration/README.md for the full mapping.
-content_dir = "../content"
-# Local cache where `nlm` downloads land before being uploaded to Canvas.
-local_media_cache = "/tmp/playbook-media"
-# Registry of NotebookLM-produced assets (notebook_id, artifact_id, type).
-media_urls_file = "../canvas-integration/media-urls.toml"
-# Folder name inside the Canvas course where assets are uploaded.
-canvas_media_folder = "playbook-media"
-
-
+#
+# Per-course nesting: each course that uses the extension gets its own
+# [courses.<alias>.playbook] block. The course alias is whatever you pass
+# to `-c`. If exactly one course has a [playbook] sub-block, the extension
+# auto-resolves it without needing -c.
+#
+# Paths can be absolute or ~/expandable. Relative paths resolve against the
+# directory containing this config.toml.
+# Delete the section below if you don't use the playbook extension.
+#
+# [courses.is-career-playbook]
+# id = 35416
+# name = "IS Career Playbook (development course)"
+# term = "Spring Semester 2026"
+#
+# [courses.is-career-playbook.playbook]
+# # Per-week markdown source files. Anchors within the markdown drive
+# # media placement; see canvas-integration/README.md for the full mapping.
+# content_dir = "~/code/is-career-playbook/content"
+# # Local cache where `nlm` downloads land before being uploaded to Canvas.
+# local_media_cache = "/tmp/playbook-media"
+# # Registry of NotebookLM-produced assets (notebook_id, artifact_id, type).
+# media_urls_file = "~/code/is-career-playbook/canvas-integration/media-urls.toml"
+# # Folder name inside the Canvas course where assets are uploaded.
+# canvas_media_folder = "playbook-media"
+#
 # Optional: section-specific to-do dates. When set, deploy attaches
 # `student_todo_at` to each page and `due_at` to each assignment so they
 # appear in the Canvas To-Do list and Calendar. ISO yyyy-mm-dd format;
-# deploy appends T23:59:00Z. Omit the section to deploy without dates.
+# deploy appends T23:59:00Z. Omit the sub-section to deploy without dates.
 #
-# Example below: a slow Mon→Sun cadence across the 5 weeks before a
-# fall semester starts. Page becomes a To-Do on Monday, deliverable
-# is due Sunday — adjust to match your section calendar.
-#
-# [playbook.schedule]
+# [courses.is-career-playbook.playbook.schedule]
 # step_1_page  = "2026-08-03"
 # step_1_due   = "2026-08-09"
 # step_2_page  = "2026-08-10"
