@@ -13,22 +13,25 @@ from canvas_conductor.exceptions import ConfigError
 from canvas_conductor.extensions import playbook as pb
 
 
-def test_per_course_section_resolves_explicit_alias(write_config):
+def test_per_course_section_resolves_explicit_alias(write_config, tmp_path):
+    content_dir = (tmp_path / "content").resolve()
+    local_media_cache = (tmp_path / "cache").resolve()
+    media_urls_file = (tmp_path / "media-urls.toml").resolve()
     write_config(
-        """
+        f"""
 [courses.is-career-playbook]
 id = 35416
 
 [courses.is-career-playbook.playbook]
-content_dir = "/abs/content"
-local_media_cache = "/tmp/cache"
-media_urls_file = "/abs/media-urls.toml"
+content_dir = "{content_dir.as_posix()}"
+local_media_cache = "{local_media_cache.as_posix()}"
+media_urls_file = "{media_urls_file.as_posix()}"
 """
     )
     paths = pb._playbook_paths("is-career-playbook")
-    assert str(paths["content_dir"]) == "/abs/content"
-    assert str(paths["local_media_cache"]) == "/tmp/cache"
-    assert str(paths["media_urls_file"]) == "/abs/media-urls.toml"
+    assert paths["content_dir"] == content_dir
+    assert paths["local_media_cache"] == local_media_cache
+    assert paths["media_urls_file"] == media_urls_file
     assert paths["canvas_media_folder"] == "playbook-media"  # default
 
 
